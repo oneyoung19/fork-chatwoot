@@ -16,7 +16,7 @@
 | Redis | 任意稳定版 | Homebrew / apt |
 | Overmind | 任意 | Homebrew / 手动安装 |
 
-> macOS 一键安装示例：`brew install rbenv node redis postgresql@16 overmind`
+> macOS 一键安装示例：`brew install rbenv ruby-build node redis postgresql@16 overmind`
 
 ---
 
@@ -55,17 +55,18 @@ pnpm install     # Node 依赖
 cp .env.example .env
 ```
 
-编辑 `.env`，至少填写以下变量：
+编辑 `.env`，必填项如下：
 
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| `SECRET_KEY_BASE` | Rails Cookie 签名密钥，用 `bundle exec rake secret` 生成 | 64 位十六进制字符串 |
-| `FRONTEND_URL` | 前端访问地址 | `http://localhost:3000` |
-| `POSTGRES_HOST` | PostgreSQL 主机 | `localhost` |
-| `POSTGRES_USERNAME` | 数据库用户名 | `postgres` |
-| `POSTGRES_PASSWORD` | 数据库密码 | （可留空用于本地） |
-| `REDIS_URL` | Redis 连接地址 | `redis://localhost:6379` |
-| `SMTP_ADDRESS` | SMTP 服务器（可不填，使用 MailHog） | `localhost` |
+| 变量 | 是否必填 | 说明 |
+|------|----------|------|
+| `SECRET_KEY_BASE` | **必填** | Rails Cookie 签名密钥，用 `openssl rand -hex 64` 生成 |
+| `POSTGRES_PASSWORD` | **必填** | 数据库密码，不能为空（Docker postgres 镜像强制要求），开发环境填任意字符串如 `password` 即可 |
+| `FRONTEND_URL` | **建议修改** | 改为 `http://localhost:3000`（默认的 `0.0.0.0` 会导致 Widget embed 代码中 BASE_URL 不可用） |
+| `POSTGRES_HOST` | 已有默认值 | Docker 下默认 `postgres`（容器服务名），无需修改 |
+| `POSTGRES_USERNAME` | 已有默认值 | 默认 `postgres`，无需修改 |
+| `REDIS_URL` | 已有默认值 | Docker 下默认 `redis://redis:6379`，无需修改 |
+| `REDIS_PASSWORD` | 可选 | 若设置，Redis 容器会启用密码验证，开发环境可留空 |
+| `SMTP_ADDRESS` | 可选 | 填 `mailhog` 可使用 docker-compose 内置的 MailHog 接收邮件 |
 
 开发环境可将 `LETTER_OPENER=true` 取消注释，邮件将在浏览器直接打开预览（无需真实 SMTP）。
 
@@ -90,7 +91,7 @@ overmind start -f Procfile.dev
 |------|------|------|
 | `backend` | `bin/rails s -p 3000` | **3000**（主应用、API） |
 | `vite` | `bin/vite dev` | **3036**（Vite 热更新服务器） |
-| `worker` | `sidekiq -C config/sidekiq.yml` | 无（后台队列处理器） |
+| `worker` | `dotenv bundle exec sidekiq -C config/sidekiq.yml` | 无（后台队列处理器） |
 
 浏览器访问 `http://localhost:3000` 即可看到 Dashboard。
 
@@ -121,7 +122,19 @@ bundle exec rails console
 ### 启动
 
 ```bash
+# 首次启动（需构建本地镜像）
+# 第一步：先构建基础镜像
+docker compose -f docker-compose.yaml build base
+# 第二步：再构建并启动所有服务
+docker compose -f docker-compose.yaml up --build
+
+# 后续启动
 docker compose -f docker-compose.yaml up
+
+# 有报错情况的话 需要数据库初始化（等容器全部起来）
+# docker compose up
+docker compose exec rails bundle exec rails db:chatwoot_prepare
+docker compose exec rails bundle exec rails db:seed
 ```
 
 服务拓扑：
@@ -144,10 +157,42 @@ docker compose -f docker-compose.yaml up
 - Vite 以 `--host 0.0.0.0` 模式运行，供 Rails 容器通过内部网络访问，前端改动实时热更新。
 - MailHog 接收开发邮件，Web UI 访问 `http://localhost:8025`。
 
-首次启动时，Rails 容器的 entrypoint 会等待 PostgreSQL 就绪后自动执行 `bundle install`，随后启动服务器。如需手动初始化数据库：
+首次启动时，Rails 容器的 entrypoint 会等待 PostgreSQL 就绪后自动执行 `bundle install`，随后启动服务器。
+
+初始化数据库：
 
 ```bash
 docker compose exec rails bundle exec rails db:chatwoot_prepare
+```
+
+如需测试 Widget 嵌入功能，需手动构建 SDK（开发模式不会自动构建，生产构建时由 `assets:precompile` 自动触发）：
+
+```bash
+docker compose exec -e BUILD_MODE=library vite bin/vite build
+```
+
+### 常用 Docker 命令
+
+```bash
+# 启动 / 停止
+docker compose -f docker-compose.yaml up          # 启动所有服务
+docker compose -f docker-compose.yaml up --build  # 重新构建镜像并启动
+docker compose -f docker-compose.yaml down        # 停止并移除容器（保留数据卷）
+docker compose -f docker-compose.yaml down -v     # 停止并清除所有数据卷（重置数据库）
+
+# 查看日志
+docker compose logs -f              # 所有服务
+docker compose logs -f rails        # 仅 Rails
+docker compose logs -f sidekiq      # 仅 Sidekiq
+
+# 在容器内执行命令
+docker compose exec rails bundle exec rails console        # Rails 控制台
+docker compose exec rails bundle exec rails db:migrate     # 执行迁移
+docker compose exec rails bundle exec rails db:seed        # 填充默认测试数据
+docker compose exec rails bash                             # 进入容器 shell
+
+# 查看容器状态
+docker compose ps
 ```
 
 ---
@@ -156,9 +201,16 @@ docker compose exec rails bundle exec rails db:chatwoot_prepare
 
 | 命令 | 说明 |
 |------|------|
-| `bundle exec rails db:seed` | 标准 seed：创建默认账号、收件箱等最小数据集，适合快速功能验证 |
+| `bundle exec rails db:seed` | 标准 seed：创建默认账号、收件箱等最小数据集，适合快速功能验证（Docker 下加 `docker compose exec rails` 前缀） |
 | `bundle exec rails search:setup_test_data` | 搜索/性能测试专用：批量生成大量会话、联系人等数据 |
 | `bundle exec rails runner "Internal::SeedAccountJob.perform_now(Account.find(1))"` | 丰富的账号示例数据（对话、标签、自动化规则等），模拟真实使用场景 |
+
+`db:seed` 执行后生成的默认登录账号：
+
+| 字段 | 值 |
+|------|----|
+| Email | `john@acme.inc` |
+| Password | `Password1!` |
 
 ---
 
@@ -184,7 +236,10 @@ bundle exec rails db:migrate
 bundle exec rails db:rollback
 
 # 构建 SDK（独立产物）
-BUILD_MODE=library bin/vite build   # 输出至 public/packs/js/sdk.js
+BUILD_MODE=library bin/vite build   # 本地直接运行时，输出至 public/packs/js/sdk.js
+# docker compose exec -e BUILD_MODE=library vite bin/vite build  # Docker 模式下
+docker compose exec vite pnpm run build:sdk # bin/vite build 有 vite-ruby 缓存会跳过构建，改用 pnpm run build:sdk 直接调用 vite
+
 ```
 
 ---
