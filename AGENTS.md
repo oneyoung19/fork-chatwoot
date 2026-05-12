@@ -1,3 +1,56 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Architecture Overview
+
+Chatwoot is a Rails 7 + Vue 3 customer support platform:
+
+- **Backend**: Rails API (JSON), PostgreSQL, Redis, Sidekiq for background jobs, ActionCable for real-time WebSocket
+- **Frontend**: Multiple Vite-bundled Vue 3 SPAs in `app/javascript/entrypoints/` — `dashboard.js` (agent UI), `widget.js` (embeddable chat), `portal.js` (Help Center), `sdk.js` (built separately), `v3app.js` (next-gen UI), `survey.js`, `superadmin.js`
+- **Dev services**: `bin/rails s` (port 3000) + `bin/vite dev` + Sidekiq — managed via `overmind start -f Procfile.dev`
+
+### Backend
+
+```
+app/
+  controllers/api/v1/   # REST API, account-scoped under /api/v1/accounts/:account_id
+  models/channel/        # One model per inbox channel type (WebWidget, Email, Whatsapp, FacebookPage, etc.)
+  services/              # Business logic POROs, organized by domain (conversations/, contacts/, etc.)
+  dispatchers/           # Wisper pub/sub event bus: Dispatcher → SyncDispatcher + AsyncDispatcher → Listeners
+  listeners/             # Event handlers (AutomationRuleListener, NotificationListener, etc.)
+  policies/              # Pundit authorization
+  builders/ finders/     # Object construction and query helpers
+enterprise/app/          # EE overlay — mirrors app/ structure; overrides OSS via prepend_mod_with/include_mod_with
+```
+
+**Event flow**: `Dispatcher.dispatch(event_name, timestamp, data)` broadcasts synchronously and asynchronously. Listeners subscribe via Wisper and handle domain events (`conversation_created`, `message_created`, etc.). Add new event handling in `app/listeners/`.
+
+### Frontend
+
+```
+app/javascript/
+  dashboard/
+    store/modules/   # Vuex (primary state management); access via useStore()/useStoreGetters() composables
+    stores/          # Pinia (new; calls + companies migrated — ongoing migration from Vuex)
+    components-next/ # Current component library — use for ALL new UI work
+    components/      # Legacy components (deprecated; do not add new work here)
+    composables/     # Vue composables; store.js provides the Vuex bridge for <script setup>
+    routes/dashboard/# Feature-domain route views
+    api/             # API client modules (one file per resource)
+    featureFlags.js  # FEATURE_FLAGS + PREMIUM_FEATURES constants
+  v3/                # Next-gen UI (Vue 3 + Pinia; long-term dashboard replacement)
+  shared/            # Shared composables, helpers, store between dashboard and widget
+  widget/            # Embeddable chat widget (standalone Vue app)
+  sdk/               # JS SDK — build separately: BUILD_MODE=library bin/vite build
+```
+
+**State management**: In `<script setup>`, use `useStore()` and `useStoreGetters()` from `dashboard/composables/store.js` — not Vue's own `useStore`. New feature work in `v3/` uses Pinia.
+
+**Feature flags**: `featureFlags.js` lists all flags. `PREMIUM_FEATURES` subset (Captain AI, SLA, Custom Roles, etc.) requires an Enterprise license. Use `useFeatureFlags()` composable to gate UI.
+
+**Captain AI** (Enterprise): AI copilot — store under `dashboard/store/captain/`, routes under `dashboard/routes/dashboard/captain/`. Provides in-conversation AI reply suggestions and a standalone assistant.
+
 # Chatwoot Development Guidelines
 
 ## Build / Test / Lint
@@ -84,7 +137,8 @@
   - Other languages are handled by the community
   - Backend i18n → `en.yml`, Frontend i18n → `en.json`
 - **Frontend**:
-  - Use `components-next/` for message bubbles (the rest is being deprecated)
+  - Use `components-next/` for all new UI work (legacy `components/` is being deprecated)
+  - `v3/` is the next-gen app; prefer Pinia stores there, Vuex modules in `dashboard/`
 
 ## Ruby Best Practices
 
