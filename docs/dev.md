@@ -250,3 +250,43 @@ docker compose exec vite pnpm run build:sdk # bin/vite build 有 vite-ruby 缓�
 - **Rails 日志**：`tail -f log/development.log`
 - **Sidekiq Web UI**：访问 `http://localhost:3000/sidekiq`（需超级管理员身份）
 - **超级管理员**：访问 `http://localhost:3000/super_admin`
+
+---
+
+## 七、依赖安装机制（docker compose up 每次都会重装吗？）
+
+每次 `docker compose up` 确实会执行依赖安装命令，但由于 Docker named volume 的存在，**大多数情况下很快**。
+
+### 每次启动时执行的命令
+
+- **rails / sidekiq 容器**（`docker/entrypoints/rails.sh`）：执行 `bundle install`
+- **vite 容器**（`docker/entrypoints/vite.sh`）：执行 `pnpm store prune && pnpm install --force`
+
+### 为什么不慢
+
+`docker-compose.yaml` 声明了 named volume，跨容器重启持久存在：
+
+```yaml
+volumes:
+  - bundle:/usr/local/bundle      # gems 缓存在此
+  - node_modules:/app/node_modules  # node_modules 缓存在此
+```
+
+| 命令 | 第一次 | 后续 `up` |
+|------|--------|-----------|
+| `bundle install` | 完整安装所有 gems | `Gemfile.lock` 无变化时几乎瞬间完成 |
+| `pnpm install --force` | 完整安装 | 强制重装，但 pnpm 通过硬链接从本地 store 复制，速度快 |
+
+`pnpm install --force` 之所以加 `--force`，是因为基础镜像按生产环境构建（不含 devDependencies），开发模式启动时需要每次补装开发依赖。
+
+### 什么时候会真正完整重装
+
+```bash
+# 删除 volume 后下次 up 会完整重装
+docker compose down -v
+
+# 重新构建镜像
+docker compose up --build
+```
+
+正常的 `docker compose up` 或 `Ctrl+C` 后再 `up` 不会触发完整重装。
