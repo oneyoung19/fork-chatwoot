@@ -32,6 +32,12 @@ export default {
         CONVERSATION_STATUS.PENDING,
       ].includes(this.conversationStatus);
     },
+    showTransferButton() {
+      return (
+        this.conversationStatus === CONVERSATION_STATUS.OPEN &&
+        !!this.conversationAttributes.id
+      );
+    },
     isIframe() {
       return IFrameHelper.isIFrame();
     },
@@ -73,6 +79,9 @@ export default {
     resolveConversation() {
       this.$store.dispatch('conversation/resolveConversation');
     },
+    transferToHuman() {
+      this.$store.dispatch('conversation/requestBotHandoff');
+    },
   },
 };
 </script>
@@ -80,6 +89,14 @@ export default {
 <!-- eslint-disable-next-line vue/no-root-v-if -->
 <template>
   <div v-if="showHeaderActions" class="actions flex items-center gap-3">
+    <button
+      v-if="showTransferButton"
+      class="button transparent compact"
+      :title="$t('TRANSFER_TO_HUMAN')"
+      @click="transferToHuman"
+    >
+      <FluentIcon icon="person" size="22" class="text-n-slate-12" />
+    </button>
     <button
       v-if="
         canLeaveConversation &&
