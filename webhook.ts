@@ -50,11 +50,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ status: 'ignored' })
   }
 
-  // If a human agent is already assigned, let them handle it
   const meta = conversation?.meta as Record<string, unknown> | undefined
+  const convStatus = (conversation?.status as string | undefined) ?? ''
   const assignee = meta?.assignee
-  if (assignee) {
-    console.log(`[chatwoot] account=${accountId} conv=${conversationId} — human assignee present, ignored`)
+
+  if (convStatus !== 'pending' || assignee) {
+    console.log(`[chatwoot] conv=${conversationId} ignored: status=${convStatus}, assignee=${!!assignee}`)
     return NextResponse.json({ status: 'ignored' })
   }
 
