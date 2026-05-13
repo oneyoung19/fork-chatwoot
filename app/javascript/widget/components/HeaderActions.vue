@@ -34,7 +34,7 @@ export default {
     },
     showTransferButton() {
       return (
-        this.conversationStatus === CONVERSATION_STATUS.OPEN &&
+        this.conversationStatus === CONVERSATION_STATUS.PENDING &&
         !!this.conversationAttributes.id
       );
     },
@@ -95,7 +95,7 @@ export default {
       :title="$t('TRANSFER_TO_HUMAN')"
       @click="transferToHuman"
     >
-      <FluentIcon icon="person" size="22" class="text-n-slate-12" />
+      <FluentIcon icon="arrow-right" size="22" class="text-n-slate-12" />
     </button>
     <button
       v-if="

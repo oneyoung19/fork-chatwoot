@@ -213,9 +213,10 @@ export const actions = {
     await toggleStatus();
   },
 
-  requestBotHandoff: async () => {
+  requestBotHandoff: async ({ dispatch }) => {
     try {
       await requestBotHandoffAPI();
+      dispatch('conversationAttributes/getAttributes', {}, { root: true });
     } catch (error) {
       // IgnoreError
     }

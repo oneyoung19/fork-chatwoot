@@ -93,23 +93,105 @@ POST /api/rag-bot/webhook
 Headers:
   X-Chatwoot-Timestamp: 1715000000
   X-Chatwoot-Signature: sha256=<HMAC-SHA256(secret, "{ts}.{body}")>
+  Content-Type: application/json
 ```
 
-Chatwoot 发送的 payload（只需关心这几个字段）：
+#### 完整 Payload 结构（message_created 事件）
 
 ```json
 {
   "event": "message_created",
-  "message_type": "incoming",
+
+  "id": 1234,
   "content": "你们的退款政策是什么？",
+  "content_type": "text",
+  "message_type": "incoming",
+  "private": false,
+  "created_at": "2024-01-15T10:30:00.000Z",
+  "source_id": null,
+  "additional_attributes": {},
+  "content_attributes": {},
+
+  "account": {
+    "id": 1,
+    "name": "My Company"
+  },
+
+  "inbox": {
+    "id": 3,
+    "name": "Website Widget"
+  },
+
   "conversation": {
     "id": 42,
-    "account_id": 1
+    "inbox_id": 3,
+    "status": "open",
+    "labels": [],
+    "custom_attributes": {},
+    "can_reply": true,
+    "channel": "Channel::WebWidget",
+    "unread_count": 1,
+    "priority": null,
+    "waiting_since": 0,
+    "created_at": 1715000000,
+    "timestamp": 1715000000,
+    "meta": {
+      "sender": { "id": 5, "name": "访客用户" },
+      "assignee": null,
+      "assignee_type": "agent_bot",
+      "team": null,
+      "hmac_verified": false
+    },
+    "messages": []
+  },
+
+  "sender": {
+    "id": 5,
+    "name": "访客用户",
+    "email": null,
+    "phone_number": null,
+    "avatar": "https://...",
+    "identifier": null,
+    "additional_attributes": {},
+    "custom_attributes": {},
+    "account": { "id": 1, "name": "My Company" }
   }
 }
 ```
 
-只处理 `message_type === "incoming"` 且 `event === "message_created"` 的事件，其余直接返回 `200 ignored`。
+#### Next.js 路由里需要用到的字段
+
+```typescript
+payload.event              // "message_created"
+payload.message_type       // "incoming" | "outgoing" | "activity" | "template"
+payload.content            // 用户消息文本
+payload.conversation.id    // display_id，用于拼 Chatwoot API 回调 URL
+payload.account.id         // account_id，用于拼 Chatwoot API 回调 URL
+payload.sender?.name       // 发送者名字（可选）
+```
+
+> **注意：`conversation.id` 是 `display_id`（对外展示编号），不是数据库内部主键。**  
+> 直接用它拼 `/api/v1/accounts/{account.id}/conversations/{conversation.id}/messages` 即可。
+
+#### 必须过滤的事件类型
+
+Bot 自己发出的回复也会再次触发 `message_created` webhook，`message_type` 为 `"outgoing"`。**不过滤会导致死循环**（Bot 回复 → 触发 webhook → Bot 再回复 → …）。
+
+```typescript
+// 只处理用户入站消息，其余全部忽略
+if (payload.event !== 'message_created' || payload.message_type !== 'incoming') {
+  return Response.json({ status: 'ignored' })
+}
+```
+
+`message_type` 的所有可能值：
+
+| 值 | 含义 | 是否处理 |
+|----|------|---------|
+| `"incoming"` | 用户发送的消息 | ✅ 处理 |
+| `"outgoing"` | Bot / Agent 发出的回复 | ❌ 忽略 |
+| `"activity"` | 系统事件（分配、状态变更等） | ❌ 忽略 |
+| `"template"` | 模板消息 | ❌ 忽略 |
 
 ### 接口契约：Next.js → Chatwoot（发送回复）
 
