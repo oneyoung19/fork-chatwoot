@@ -62,6 +62,12 @@ const toggleStatus = async () => {
   );
 };
 
+const requestBotHandoffAPI = async () => {
+  return API.post(
+    `/api/v1/widget/conversations/bot_handoff${window.location.search}`
+  );
+};
+
 const setCustomAttributes = async customAttributes => {
   return API.post(
     `/api/v1/widget/conversations/set_custom_attributes${window.location.search}`,
@@ -92,4 +98,5 @@ export {
   toggleStatus,
   setCustomAttributes,
   deleteCustomAttribute,
+  requestBotHandoffAPI,
 };

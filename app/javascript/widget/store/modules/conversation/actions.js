@@ -8,6 +8,7 @@ import {
   toggleStatus,
   setCustomAttributes,
   deleteCustomAttribute,
+  requestBotHandoffAPI,
 } from 'widget/api/conversation';
 
 import { ON_CONVERSATION_CREATED } from 'widget/constants/widgetBusEvents';
@@ -210,6 +211,14 @@ export const actions = {
 
   resolveConversation: async () => {
     await toggleStatus();
+  },
+
+  requestBotHandoff: async () => {
+    try {
+      await requestBotHandoffAPI();
+    } catch (error) {
+      // IgnoreError
+    }
   },
 
   setCustomAttributes: async (
