@@ -269,6 +269,23 @@ RSpec.describe Message do
       expect(conversation.open?).to be false
       expect(conversation.pending?).to be true
     end
+
+    it 'reopens bot conversations for the assigned human agent instead of marking them pending' do
+      account = conversation.account
+      agent_bot = create(:agent_bot, account: account)
+      agent = create(:user, account: account, role: :agent)
+      inbox = conversation.inbox
+      inbox.agent_bot = agent_bot
+      inbox.save!
+      conversation.update!(assignee: agent)
+      conversation.resolved!
+
+      message.save!
+
+      expect(conversation.reload.open?).to be true
+      expect(conversation.pending?).to be false
+      expect(conversation.assignee).to eq(agent)
+    end
   end
 
   describe '#mark_pending_conversation_as_open_for_human_response' do
