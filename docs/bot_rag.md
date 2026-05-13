@@ -295,7 +295,7 @@ CHATWOOT_AGENT_BOT_SECRET=xxxx   # 用于验签（可选）
 
 点击后调用 Vuex action `conversation/requestBotHandoff`，该 action 调用新增的 widget API `POST /api/v1/widget/conversations/bot_handoff`，Chatwoot 后端直接执行 `conversation.bot_handoff!`。
 
-按钮仅在对话为 `open` 状态且有 conversation id 时显示。
+按钮仅在对话为 `pending` 状态（Bot 接管中）且有 conversation id 时显示。Bot 转人工后状态变为 `open`，按钮自动消失。
 
 ---
 
