@@ -67,6 +67,12 @@ class Api::V1::Widget::ConversationsController < Api::V1::Widget::BaseController
   def bot_handoff
     return head :unprocessable_entity if conversation.resolved?
 
+    conversation.messages.create!(
+      account_id: conversation.account_id,
+      inbox_id: conversation.inbox_id,
+      message_type: :activity,
+      content: I18n.t('conversations.activity.handoff.initiated')
+    )
     conversation.bot_handoff!
     head :ok
   end
