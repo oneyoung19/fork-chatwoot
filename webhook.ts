@@ -54,8 +54,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const convStatus = (conversation?.status as string | undefined) ?? ''
   const assignee = meta?.assignee
 
+  const assigneeId = (meta?.assignee as Record<string, unknown> | undefined)?.id
   if (convStatus !== 'pending' || assignee) {
-    console.log(`[chatwoot] conv=${conversationId} ignored: status=${convStatus}, assignee=${!!assignee}`)
+    console.log(`[chatwoot] conv=${conversationId} ignored: status=${convStatus}, assigneeId=${assigneeId ?? 'none'}`)
     return NextResponse.json({ status: 'ignored' })
   }
 
