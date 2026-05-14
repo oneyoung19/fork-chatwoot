@@ -37,6 +37,7 @@ class AgentBotListener < BaseListener
     message = extract_message_and_account(event)[0]
     inbox = message.inbox
     return unless message.webhook_sendable?
+    return if message.sender.is_a?(AgentBot)
 
     method_name = __method__.to_s
     agent_bots_for(inbox, message.conversation).each { |agent_bot| process_message_event(method_name, agent_bot, message, event) }
@@ -46,6 +47,7 @@ class AgentBotListener < BaseListener
     message = extract_message_and_account(event)[0]
     inbox = message.inbox
     return unless message.webhook_sendable?
+    return if message.sender.is_a?(AgentBot)
 
     method_name = __method__.to_s
     agent_bots_for(inbox, message.conversation).each { |agent_bot| process_message_event(method_name, agent_bot, message, event) }

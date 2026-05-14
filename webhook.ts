@@ -10,10 +10,8 @@ const BOT_MODEL = (process.env.CHATWOOT_BOT_MODEL as ModelId) ?? undefined;
 const HANDOFF_MESSAGE =
   process.env.CHATWOOT_HANDOFF_MESSAGE ??
   '好的，正在为您转接人工客服，请稍候。';
-const DEFAULT_HANDOFF_TEAM_ID = parseId(process.env.CHATWOOT_HANDOFF_TEAM_ID);
-const DEFAULT_HANDOFF_ASSIGNEE_ID = parseId(
-  process.env.CHATWOOT_HANDOFF_ASSIGNEE_ID
-);
+const HANDOFF_CONFIRM_MESSAGE =
+  process.env.CHATWOOT_HANDOFF_CONFIRM_MESSAGE ?? '';
 
 const HANDOFF_PATTERNS = [
   '转人工',
@@ -32,38 +30,6 @@ const HANDOFF_PATTERNS = [
 function isHandoffRequest(content: string): boolean {
   const lower = content.toLowerCase();
   return HANDOFF_PATTERNS.some(p => lower.includes(p.toLowerCase()));
-}
-
-function parseId(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value === 'string' && /^\d+$/.test(value)) {
-    return Number(value);
-  }
-
-  return undefined;
-}
-
-function resolveHandoffRoute(
-  conversation: Record<string, unknown>,
-  meta?: Record<string, unknown>
-) {
-  const customAttributes = conversation.custom_attributes as
-    | Record<string, unknown>
-    | undefined;
-  const team = meta?.team as Record<string, unknown> | undefined;
-
-  return {
-    teamId:
-      parseId(customAttributes?.handoff_team_id) ??
-      parseId(team?.id) ??
-      DEFAULT_HANDOFF_TEAM_ID,
-    assigneeId:
-      parseId(customAttributes?.handoff_assignee_id) ??
-      DEFAULT_HANDOFF_ASSIGNEE_ID,
-  };
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -110,7 +76,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const meta = conversation?.meta as Record<string, unknown> | undefined;
   const convStatus = (conversation?.status as string | undefined) ?? '';
   const assignee = meta?.assignee;
-  const handoffRoute = resolveHandoffRoute(conversation, meta);
 
   if (convStatus !== 'pending' || assignee) {
     console.log(
@@ -120,12 +85,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   console.log(
-    `[chatwoot] account=${accountId} conv=${conversationId} handoffTeamId=${handoffRoute.teamId ?? 'none'} ` +
-      `handoffAssigneeId=${handoffRoute.assigneeId ?? 'none'} content="${content.slice(0, 60)}"`
+    `[chatwoot] account=${accountId} conv=${conversationId} content="${content.slice(0, 60)}"`
   );
 
   // Return 200 immediately so Chatwoot doesn't time out waiting for the LLM
-  handleMessage(accountId, conversationId, content.trim(), handoffRoute).catch(
+  handleMessage(accountId, conversationId, content.trim()).catch(
     err => console.error('[chatwoot] reply error:', err)
   );
 
@@ -135,8 +99,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 async function handleMessage(
   accountId: number,
   conversationId: number,
-  content: string,
-  handoffRoute: { teamId?: number; assigneeId?: number }
+  content: string
 ) {
   if (isHandoffRequest(content)) {
     console.log(`[chatwoot] conv=${conversationId} handoff detected`);
@@ -144,8 +107,18 @@ async function handleMessage(
       err =>
         console.error('[chatwoot bot] handoff acknowledgement failed:', err)
     );
-    await chatwootAssignConversation(accountId, conversationId, handoffRoute);
+    // Toggle status to open — Chatwoot Automation Rules handle team/agent assignment
     await chatwootTriggerHandoff(accountId, conversationId);
+    if (HANDOFF_CONFIRM_MESSAGE) {
+      await chatwootSendMessage(
+        accountId,
+        conversationId,
+        HANDOFF_CONFIRM_MESSAGE,
+        { handoff_notification: true }
+      ).catch(err =>
+        console.error('[chatwoot bot] handoff confirm message failed:', err)
+      );
+    }
     console.log(`[chatwoot] conv=${conversationId} handoff complete`);
     return;
   }
@@ -164,57 +137,22 @@ async function handleMessage(
 async function chatwootSendMessage(
   accountId: number,
   conversationId: number,
-  content: string
+  content: string,
+  additionalAttributes?: Record<string, unknown>
 ) {
   await chatwootRequest(
     `/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
     {
       method: 'POST',
-      body: { content, message_type: 'outgoing', private: false },
+      body: {
+        content,
+        message_type: 'outgoing',
+        private: false,
+        ...(additionalAttributes && { additional_attributes: additionalAttributes }),
+      },
     },
     'send message'
   );
-}
-
-async function chatwootAssignConversation(
-  accountId: number,
-  conversationId: number,
-  handoffRoute: { teamId?: number; assigneeId?: number }
-) {
-  const { teamId, assigneeId } = handoffRoute;
-
-  if (!teamId && !assigneeId) {
-    console.warn(
-      `[chatwoot] conv=${conversationId} no explicit handoff route found; ` +
-        'conversation will be opened without team/assignee assignment'
-    );
-  }
-
-  if (teamId) {
-    await chatwootRequest(
-      `/api/v1/accounts/${accountId}/conversations/${conversationId}/assignments`,
-      {
-        method: 'POST',
-        body: { team_id: teamId },
-      },
-      'assign team'
-    ).catch(err =>
-      console.error('[chatwoot bot] handoff team assignment failed:', err)
-    );
-  }
-
-  if (assigneeId) {
-    await chatwootRequest(
-      `/api/v1/accounts/${accountId}/conversations/${conversationId}/assignments`,
-      {
-        method: 'POST',
-        body: { assignee_id: assigneeId },
-      },
-      'assign agent'
-    ).catch(err =>
-      console.error('[chatwoot bot] handoff agent assignment failed:', err)
-    );
-  }
 }
 
 export async function chatwootTriggerHandoff(
@@ -282,6 +220,6 @@ async function isValidSignature(
   return expected === sig;
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
+export async function GET(_req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ status: 'ok' });
 }

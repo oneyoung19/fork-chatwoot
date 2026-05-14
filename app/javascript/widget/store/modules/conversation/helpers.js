@@ -17,6 +17,9 @@ export const createTemporaryMessage = ({ attachments, content, replyTo }) => {
 
 const getSenderName = message => (message.sender ? message.sender.name : '');
 
+const isHandoffNotification = message =>
+  message?.additional_attributes?.handoff_notification === true;
+
 const shouldShowAvatar = (message, nextMessage) => {
   const currentSender = getSenderName(message);
   const nextSender = getSenderName(nextMessage);
@@ -32,13 +35,19 @@ export const groupConversationBySender = conversationsForADate =>
   conversationsForADate.map((message, index) => {
     let showAvatar;
     const isLastMessage = index === conversationsForADate.length - 1;
-    if (isASubmittedFormMessage(message)) {
+    if (isHandoffNotification(message) || isASubmittedFormMessage(message)) {
       showAvatar = false;
     } else if (isLastMessage) {
       showAvatar = true;
     } else {
-      const nextMessage = conversationsForADate[index + 1];
-      showAvatar = shouldShowAvatar(message, nextMessage);
+      const nextNonHandoff = conversationsForADate
+        .slice(index + 1)
+        .find(m => !isHandoffNotification(m));
+      if (!nextNonHandoff) {
+        showAvatar = true;
+      } else {
+        showAvatar = shouldShowAvatar(message, nextNonHandoff);
+      }
     }
     return { showAvatar, ...message };
   });

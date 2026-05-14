@@ -1,6 +1,7 @@
 <script>
 import AgentMessage from 'widget/components/AgentMessage.vue';
 import UserMessage from 'widget/components/UserMessage.vue';
+import HandoffNotification from 'widget/components/HandoffNotification.vue';
 import { mapGetters } from 'vuex';
 import { MESSAGE_TYPE } from 'widget/helpers/constants';
 
@@ -8,6 +9,7 @@ export default {
   components: {
     AgentMessage,
     UserMessage,
+    HandoffNotification,
   },
   props: {
     message: {
@@ -22,6 +24,9 @@ export default {
     isUserMessage() {
       return this.message.message_type === MESSAGE_TYPE.INCOMING;
     },
+    isHandoffNotification() {
+      return this.message.additional_attributes?.handoff_notification === true;
+    },
     replyTo() {
       const replyTo = this.message?.content_attributes?.in_reply_to;
       return replyTo ? this.allMessages[replyTo] : null;
@@ -31,8 +36,13 @@ export default {
 </script>
 
 <template>
+  <HandoffNotification
+    v-if="isHandoffNotification"
+    :id="`cwmsg-${message.id}`"
+    :message="message"
+  />
   <UserMessage
-    v-if="isUserMessage"
+    v-else-if="isUserMessage"
     :id="`cwmsg-${message.id}`"
     :message="message"
     :reply-to="replyTo"

@@ -123,6 +123,13 @@ class Messages::MessageBuilder
     @params[:template_params].present? ? { additional_attributes: { template_params: JSON.parse(@params[:template_params].to_json) } } : {}
   end
 
+  def handoff_notification
+    return {} unless @params.respond_to?(:dig)
+    return {} unless @params.dig(:additional_attributes, :handoff_notification)
+
+    { additional_attributes: { handoff_notification: true } }
+  end
+
   def message_sender
     return if @params[:sender_type] != 'AgentBot'
 
@@ -143,7 +150,7 @@ class Messages::MessageBuilder
       in_reply_to: @in_reply_to,
       echo_id: @params[:echo_id],
       source_id: @params[:source_id]
-    }.merge(external_created_at).merge(automation_rule_id).merge(campaign_id).merge(template_params)
+    }.merge(external_created_at).merge(automation_rule_id).merge(campaign_id).merge(template_params).merge(handoff_notification)
   end
 
   def email_inbox?
