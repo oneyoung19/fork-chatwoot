@@ -110,27 +110,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const meta = conversation?.meta as Record<string, unknown> | undefined;
   const convStatus = (conversation?.status as string | undefined) ?? '';
   const assignee = meta?.assignee;
-  const assigneeType = (meta?.assignee_type as string | undefined) ?? '';
   const handoffRoute = resolveHandoffRoute(conversation, meta);
-  const assigneeId = (meta?.assignee as Record<string, unknown> | undefined)
-    ?.id;
-
-  if (convStatus === 'pending' && assignee && assigneeType === 'User') {
-    console.log(
-      `[chatwoot] conv=${conversationId} human assignee detected while pending; reopening for live agent`
-    );
-    chatwootTriggerHandoff(accountId, conversationId).catch(err =>
-      console.error(
-        '[chatwoot] failed to reopen pending human conversation:',
-        err
-      )
-    );
-    return NextResponse.json({ status: 'ignored' });
-  }
 
   if (convStatus !== 'pending' || assignee) {
     console.log(
-      `[chatwoot] conv=${conversationId} ignored: status=${convStatus}, assigneeId=${assigneeId ?? 'none'}`
+      `[chatwoot] conv=${conversationId} ignored: status=${convStatus}`
     );
     return NextResponse.json({ status: 'ignored' });
   }

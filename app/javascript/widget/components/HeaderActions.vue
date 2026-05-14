@@ -89,14 +89,15 @@ export default {
 <!-- eslint-disable-next-line vue/no-root-v-if -->
 <template>
   <div v-if="showHeaderActions" class="actions flex items-center gap-3">
-    <button
+    <!-- Transfer button disabled: assignment is handled via text pattern ("转人工") in the webhook -->
+    <!-- <button
       v-if="showTransferButton"
       class="button transparent compact"
       :title="$t('TRANSFER_TO_HUMAN')"
       @click="transferToHuman"
     >
       <FluentIcon icon="arrow-right" size="22" class="text-n-slate-12" />
-    </button>
+    </button> -->
     <button
       v-if="
         canLeaveConversation &&

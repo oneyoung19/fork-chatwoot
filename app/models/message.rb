@@ -422,11 +422,9 @@ class Message < ApplicationRecord
   end
 
   def reopen_resolved_conversation
-    # mark resolved bot conversation as pending to be reopened by bot processor service
-    if reopen_resolved_bot_conversation_for_human?
-      Current.executed_by = sender if reopened_by_contact?
-      conversation.open!
-    elsif conversation.inbox.active_bot?
+    if conversation.inbox.active_bot?
+      # Clear any prior human assignment so the bot handles this session from scratch
+      conversation.update_columns(assignee_id: nil, team_id: nil)
       conversation.pending!
     elsif conversation.inbox.api?
       Current.executed_by = sender if reopened_by_contact?
@@ -434,10 +432,6 @@ class Message < ApplicationRecord
     else
       conversation.open!
     end
-  end
-
-  def reopen_resolved_bot_conversation_for_human?
-    conversation.inbox.active_bot? && (conversation.assignee.present? || conversation.team.present?)
   end
 
   def reopened_by_contact?
