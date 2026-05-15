@@ -24,7 +24,8 @@ class AgentBotListener < BaseListener
       event: event_name,
       changed_attributes: changed_attributes,
       account: account.webhook_data,
-      previous_status: conversation.saved_change_to_status&.first
+      previous_status: conversation.saved_change_to_status&.first,
+      performed_by_type: Current.user&.class&.name
     )
     agent_bots_for(inbox, conversation).each { |agent_bot| process_webhook_bot_event(agent_bot, payload) }
   end

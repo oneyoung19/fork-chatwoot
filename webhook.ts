@@ -34,9 +34,12 @@ function isHandoffRequest(content: string): boolean {
 
 function isPendingToOpenHandoff(payload: Record<string, unknown>): boolean {
   if (payload.status !== 'open') return false;
-  const prev = payload.previous_status;
-  // Rails enum: saved_change_to_status returns string label ("pending") in Rails 7
-  return prev === 'pending';
+  if (payload.previous_status !== 'pending') return false;
+  // Only send for explicit agent takeover (Current.user is a User/agent).
+  // AgentBot-triggered and Automation Rule-triggered transitions are excluded:
+  //   bot toggle_status → performed_by_type = 'AgentBot' (bot flow already sends the message)
+  //   automation rule   → performed_by_type = null (runs in async job with no Current.user)
+  return payload.performed_by_type === 'User';
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -56,14 +59,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   if (payload.event === 'conversation_status_changed') {
+    console.log(
+      `[chatwoot] status_changed conv=${payload.id} status=${payload.status} prev=${payload.previous_status} by=${payload.performed_by_type}`
+    );
     if (HANDOFF_CONFIRM_MESSAGE && isPendingToOpenHandoff(payload)) {
       const account = payload.account as Record<string, unknown> | undefined;
       const accountId = account?.id as number | undefined;
       const conversationId = payload.id as number | undefined;
 
       if (accountId && conversationId) {
-        console.log(`[chatwoot] conv=${conversationId} pending→open — sending handoff confirm`);
-        chatwootSendMessage(accountId, conversationId, HANDOFF_CONFIRM_MESSAGE, { handoff_notification: true })
+        console.log(`[chatwoot] conv=${conversationId} agent takeover — sending handoff confirm`);
+        await chatwootSendMessage(accountId, conversationId, HANDOFF_CONFIRM_MESSAGE, { handoff_notification: true })
           .catch(err => console.error('[chatwoot bot] handoff confirm failed:', err));
       }
     }
@@ -126,12 +132,20 @@ async function handleMessage(
   if (isHandoffRequest(content)) {
     console.log(`[chatwoot] conv=${conversationId} handoff detected`);
     await chatwootSendMessage(accountId, conversationId, HANDOFF_MESSAGE).catch(
-      err =>
-        console.error('[chatwoot bot] handoff acknowledgement failed:', err)
+      err => console.error('[chatwoot bot] handoff acknowledgement failed:', err)
     );
-    // Toggle status to open — Chatwoot Automation Rules handle team/agent assignment.
-    // HANDOFF_CONFIRM_MESSAGE is sent via conversation_status_changed event handler above.
+    // Toggle status to open — Chatwoot Automation Rules handle team/agent assignment
     await chatwootTriggerHandoff(accountId, conversationId);
+    if (HANDOFF_CONFIRM_MESSAGE) {
+      await chatwootSendMessage(
+        accountId,
+        conversationId,
+        HANDOFF_CONFIRM_MESSAGE,
+        { handoff_notification: true }
+      ).catch(err =>
+        console.error('[chatwoot bot] handoff confirm message failed:', err)
+      );
+    }
     console.log(`[chatwoot] conv=${conversationId} handoff complete`);
     return;
   }
